@@ -17,6 +17,7 @@ function _init()
  init_player()
  poke(24412,255)
  menuitem(1,"export_ram",export_ram)
+ menuitem(2,"export_all",array_to_map_total)
 end
 
 function _update60()
@@ -137,6 +138,21 @@ function array_to_map()
    if(id>0)mset(110+col,row-1,id)
   end
  end
+end
+
+function array_to_map_total()
+    for i=0,12 do
+        memset(8303+128*i,mget(32,val(lts,ltp+val("1000000000023",i+1))),17)
+    end
+    for row=1,14 do
+        for col=1,420 do
+            local id=lvl_array[row][col]
+            local mx = (col-1) % 128
+            local my = row-1 + ((col-1) \ 128)*16
+            mset(mx,my,id)
+        end
+    end
+    export_ram()
 end
 
 function val(str,pos,dgts)
