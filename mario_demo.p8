@@ -1,0 +1,389 @@
+pico-8 cartridge // http://www.pico-8.com
+version 38
+__lua__
+--metatile system demo
+--by jadelombax
+
+function _init()
+ tbl,lvl_array,y_os,lvnum,lvref={},{},20,1,1
+ for i=1,4096 do tbl[i]=@(i+8191)end
+ level_type()
+ vle(sprites,0,0)
+ --rect(74,34,77,37,5)--show enemy placeholders
+ memcpy(0,24576,8192)
+ vle(scratchpad,8192)
+ fill_array(1,119)
+ resetpal()
+ init_player()
+ poke(24412,255)
+ menuitem(1,"export_ram",export_ram)
+end
+
+function _update60()
+ lvnum=mid(1,lvnum+btnp()%16\8-btnp()%8\4,#tbl_loc/2)
+ camx,lvref,ln=mid(0,camx,3200),lvnum*2-1,lvnum-1
+ if btnp(⬆️) or btnp(⬇️) then
+  level_type()
+  fill_array(1,11)
+  fill_array(12,119)
+  init_player()
+ end
+ pal(10,val("9a4a9",tic\10%5+1))
+ c_os=camx%8
+ camera(c_os)
+ array_to_map()
+ recol()
+  map(111,0,0,y_os,17,14)
+ resetpal()
+ move_player()
+  spr(pspr,px+c_os,py+y_os,1,2,pflip)
+ rectfill(0,0,135,3,0)
+ rectfill(0,124,135,127)
+ if(lvnum<=32) print('world '..(1+ln\4)..'-'..1+ln%4,80+c_os,8,7)
+ tic+=1
+end
+
+function level_type()
+ lt=tbl[tbl_loc[lvref]]\16
+ --0,ceil,flr,flr,fotile
+ lts="00110-02112-00004-06666-00110-0000a-00004-0030a-04558-04666"
+ ltp=lt*6-5
+end
+
+function recol()
+ local bgc=tbl[tbl_loc[lvref]]%16
+ cls(bgc)
+ if(lt>=9)bgc=2 rectfill(0,24,135,127,2)
+ pal(12,bgc)
+ local coltbl=split("2c8f,41ec80f6,2c,2836b780,3db72c8f,b9382c,e74df7b715283d86,00,48,32b86311")
+ local colstr=tostr(coltbl[lt])
+ for i=1,#colstr\2 do
+  pal(val(colstr,i*2-1),val(colstr,i*2))
+ end
+end
+
+function resetpal()
+ pal()pal(1,0)
+ for i=1,6 do
+  pal(val("123ade",i),val("3cb96f",i)+128,1)
+ end
+ if(lt>=9)pal(14,14,1)
+end
+
+function export_ram()
+ cstore(0, 0, 0x4300, 'mario_demo_dst.p8')
+end
+
+
+-->8
+--data functions
+
+function fill_array(_min,_max)
+ if _min<10 then
+  for row=1,20 do
+   lvl_array[row]={}
+   for col=1,420 do
+    lvl_array[row][col]=0
+   end
+  end
+ end
+ 
+ local start,xpos=tbl_loc[lvref]+1,0
+ for i=start,start+tbl_loc[lvref+1],2 do
+  local vn=tbl[i+1]
+  if vn==0 and tbl[i]<12 then xpos+=tbl[i]*16
+  else
+   xpos+=tbl[i]\16
+   local ypos=tbl[i]%16
+   local on,gv,xv,yv,r=vn,0,0,0,0
+   if ypos<=11 then
+    if (vn>=104 and vn<=191) on,gv=104+(vn-104)\8,(vn-104)%8
+    if (vn>=192) on,gv=115+(vn-192)\16,(vn-192)%16
+    osp=on*5+2
+    if(val(os,osp,2)>128) yv=gv else xv=gv
+   else on,osp=119,597 ypos+=vn\84*4-12
+    local fow,foh=vn%84%12,vn%84\12
+    xv,yv=fow+fow\10+fow\11*3,foh+foh\6*4
+   end
+   if on>=_min and on<=_max then
+   local scx,scy=val(os,osp,2)%128,val(os,osp+2)
+   local dw,dh=val(os,osp+3),val(os,osp+4)
+   if(on==119) scy=val(lts,ltp+4)
+   local oh,ow=dh+yv,dw+xv
+  
+   if(on<=11) r=7
+   for j=0,r do
+    for y=0,oh do
+     for x=0,ow do
+      local dy,dx=y,x
+      if(on==119) dy,dx=ceil(y/16),ceil(x/16)+(x+1)\(ow+1)
+      local id=mget(scx+dx,scy+dy)
+      if(id>0) lvl_array[ypos+y+1][xpos+x+1+j*48]=id
+      end
+     end
+    end
+   end
+  end
+ end
+end
+
+function array_to_map()
+ for i=0,12 do
+  memset(8303+128*i,mget(32,val(lts,ltp+val("1000000000023",i+1))),17)
+ end
+ for row=1,14 do
+  for col=1,17 do
+   local id=lvl_array[row][col+camx\8]
+   if(id>0)mset(110+col,row-1,id)
+  end
+ end
+end
+
+function val(str,pos,dgts)
+ dgts=dgts or 1
+ return("0x"..sub(str,pos,pos+dgts-1))+0
+end
+
+function vle(s,x0,y)
+ local i,x=2,x0
+  while i<#s do
+   local v,l=ord(s,i)-96,ord(s,i+1)-96
+   if y then
+    if(v%10>0) l=v%10 i-=1
+    line(x,y,x+l-1,y,v\10) x+=l
+    if(x>127) x=x0 y+=1
+   else memset(x0,v,l) x0+=l
+  end i+=2
+ end
+end
+-->8
+--player controls
+
+function init_player()
+ px,py=20,val("9093999907",lt)*8
+ if(lvnum>=34 and lvnum<=39) px=12
+ camx,tic,pdx,pdy,jump_t=0,0,0,0,0
+end
+
+function move_player()
+ abspdx=abs(pdx)
+ if (lt>=9) and py>-6 then
+  g,jump,underwater=.04,.7,1--water
+  else g,jump,underwater=.14,2--land
+ end
+ if(btnp(❎) and (onground or underwater)) pdy,jump_t=-jump-abspdx\1/6,10
+ if(jump_t>0 and btn(❎)) pdy*=1.07
+ if(btn(🅾️)) maxvel=4/3 else maxvel=.875
+ pdy=min(pdy+g,2.5)
+ 
+ if(btn(➡️))pdx+=.05 xdir,pflip=1
+ if(btn(⬅️))pdx-=.05 xdir,pflip=-1,1
+ 
+ if onground then
+  if(abspdx>.1)pspr=65+tic*abs(maxvel)\4%3 else pspr=64
+  if(btn()%4%3==0) pdx*=.84 xdir=0
+  if(xdir*pdx<0) pspr=69
+ else pspr=68
+ end
+ map_os=888+c_os
+ 
+ --x.collision
+ hcol=3.5+4*(sgn(pdx))
+ dt=((px+map_os)/8)%1
+ for i=0,4 do
+  if fget(mget((px+map_os+pdx+hcol)/8,(py+i*4-ceil(i/5))/8),0) then
+   if(dt<.5)px-=dt else px+=dt
+   pdx=0
+  end
+ end
+ --y.collision
+ if(pdy>0) vcol=16 else vcol=-1
+ --dk=7 if(onground and abspdx>1) dk=8
+ onground=_
+ for i=0,1 do
+  if fget(mget((px+map_os+i*7)/8,(py+pdy+vcol)/8),0) then
+   if (pdy>0) py,onground=ceil(py/8)*8,1 else py=py\8*8
+   pdy=0
+  end
+ end
+ 
+ pdx=mid(-maxvel,pdx,maxvel)
+ if(py<120) px+=pdx
+ if((lvnum<35 or lvnum>39) and (px>58 or (px<46 and camx>0))) px=mid(46,px,58) camx+=pdx
+ px=max(px,0)
+ py+=pdy
+ if(jump_t>0) jump_t-=1
+end
+-->8
+--data strings
+
+sprites="ト`pホ웃ホ⧗メュkネヤ웃モkまldlbせえbせえ`j∧d∧dワ웃ワ⧗`jせkたkそaせaせaせaせ`kをkbネを⌂を웃ネ⧗😐⬆️ワメッlメ⬅️k⌂k⬅️k⬅️kそnそaせuせaせuせi⧗キ⧗b⧗キ⧗a웃ヲ웃ワ⧗ヲhえkせおkせえaせaせaせaせ`jを⧗わkaネわ웃を웃わ웃ネ🅾️⧗ヲ😐lメ⬅️k⌂jkちlせwせwh⧗ケ⬆️ケ⧗⌂ワ웃ワ⧗⌂hえkせおkせえ웃⧗웃⧗웃⧗웃⧗`jを⧗わkaネわ⧗わ웃⧗わ웃ネ🅾️⧗ヲ😐lメ⬅️kモ⌂k⬅️k⌂ruおvおuh⧗ケ⬆️ケ⧗bワ웃ワ⧗`jr웃⧗웃⧗웃⧗웃⧗`jを⧗わkaネん⧗を웃ネ🅾️⧗ヲ😐lメ⬅️kメ웃jq|c⬆️c⧗ケ⬆️ケ⧗bワ웃ワ⧗bエcエcたkたk웃⧗웃⧗웃⧗웃⧗`jを⧗わkaネゅ웃ネ🅾️⧗ヲ😐l웃k웃kメ⌂k⬅️k⬅️nおm|b⧗エ○⧗b⧗ケ⬆️ケ⧗웃ヲ⌂⧗ヲエ⧗a⧗エ⧗a⧗せおkせおk웃⧗웃⧗웃⧗웃⧗`jわ⬆️わkaネん⧗を웃ネ⧗😐⬆️ワo웃kモ웃kメ⌂jkえl⧗l|b⧗█⧗c⧗キ⧗a⧗ケ⧗⌂ワ웃ワ⧗⌂エa⧗aエa⧗aせおkせおkauauauau`kをkb…あq⌂l웃m⌂k⬅️k⌂⬆️ネm⬆️|c⬆️enb⧗ケ⧗bワ웃ワ⧗bエcエcrauauauau`k⬆️`k★pヲcャmンaネn⧗a|cエ○e⧗ワメ⧗b⧗ケ⧗メaメaメbメlamakgえaわa⌂aわb`j⧗そ⬆️i⧗エ○カ○エ░エ⧗웃ワcワ⬅️ワ웃k웃ワ⌂aえoa|cエ○e⧗ワメ⧗b⧗ケ⧗モb웃モaヲ⌂ヲ⌂fえaん⌂んi⧗つ⧗h⧗エ○カ○エ░エ⧗웃ワcワ⬅️ワmワ⌂aえ😐ka|cエ○e⧗ワメ⧗b⧗ケ⧗a웃aメ웃b웃ヲ⌂ヲ⌂eえbん⌂んh⧗せえせえそ⧗h⧗エ○カ○エ░エ⧗웃ャ⬅️ャ⌂え⌂ヲ⌂k|cエ○f⬆️c⧗ケ⧗b웃メdlamakdえcん⌂んf⬆️えとa⧗f⧗エ○カ○エ░エ⧗jpえ웃ワ⌂ワ웃k|cエ○e⧗ワメ⧗b⧗ケ⧗メbメaメaメ`kえdん⌂んe⧗すj⧗せ⧗e⧗エ○カ○エ░エ⧗⬅️k⬅️k⬅️k⬅️kえ웃ッ웃k|cエ○e⧗ワメ⧗b⧗ケ⧗メbメ웃メ웃`kえfわa⌂aわbd⧗すn⧗d⧗エ○カ○エ░エ⧗jpえ⌂ヲ⌂k|cエ○e⧗ワメ⧗c⧗キ⧗b웃メaメb웃iえi⌂dd⧗すn⧗d⧗jn⧗웃k⬅️k⬅️k⬅️k⌂えk😐l|cエ○f⬆️end웃モ`kえ`j⌂de⧗せえuたuそえそ⧗f⧗エ○オ○エ⬇️エ⧗ajpえqb★tb…○け○あi⧗エ○オ○エf⧗そwせvち⧗e⧗エ○オ○エ⬇️エ⧗a⌂n웃k⌂n웃kえqa⧗ウt⧗a⌂⧗⬅️⧗웃え○お▒k⧗ケk★jエ○オ○エg⬆️たネたˇf⧗エ○オ○エ⬇️エ⧗ajpえq⧗ウv⧗⌂⧗⬅️⧗웃kえ█え○え○⧗░kウj⧗○オ○エiˇaˇi⧗エ○オ○エ⬇️エ⧗a웃p⬅️n⌂えq⧗ウv⧗웃⧗⬅️⧗⌂kえ█kえ█⧗ケk~j⧗○オ○エ`y⧗エ○オ○エ⬇️エ⧗ajpえq⧗ウv⧗…○お○l○k⧗ケkウk⧗オ○エ`y⧗エ○オ○エ⬇️エ⧗ar⌂n웃kえq⧗ウv⧗⌂⧗⬅️⧗웃え█えlえk⧗ケkウk⧗オ○エ`y⧗エ○オ○エ⬇️エ⧗ajpえq⧗オkカkカkカkカkカ⧗⌂⧗⬅️⧗웃え█k○え○k⧗░k~k⧗オ○エ`y⧗エ○オ○エ⬇️エ⧗ar⌂n⌂えqalamam웃m웃mama웃⧗⬅️⧗⌂○m○m⧗ケkウk⧗オ○エg⧗⬇️k~j⧗`ojpネつネc★tb⧗ュ⬆️ュ⬆️░k~k⧗オ○エf⧗░k~k⧗`nr⬅️k⬅️kえつえネa⧗█キ🐱キ🐱オ⧗a⧗ュ⬆️ュ⬆️░k~k⧗オ○エe⧗⬇️k○k~l⧗`mjpそ⧗せ⧗そネ⧗▒ク█ク🐱カ⬆️ワ웃ヲ웃ワ⬆️ュ⬆️░k~k⧗オ○エd⧗░k~o⧗`lr웃k⬅️k⌂そ⧗せ⧗そネ⧗█オ█ク▒オ█カ○⬆️웃ワ⌂ワ웃⬆️ュ⬆️░k~k⧗オ○エc⧗~x⧗`kjpとネ⧗カ🐱カ⬇️ク█⬆️ュ⬆️ュ⬆️░k~j⧗○オ○エb⧗~z⧗`jr⬅️k⬅️kえせˇせえネ⧗カ🐱カ⬇️ク█⬆️ュ⬆️ュ⬆️░kウj⧗○オ○エa⧗~|⧗c∧bjpネそえそネa⧗キ█キ⬇️ケ○⬆️ュ⬆️ュ⬆️ケk★jエ○オ○エ⧗~~ˇ🐱⬆️r웃k⬅️k⌂aフcjva⧗ュ⬆️ュいi⧗エ○オ○エbはわdはわ`lはわhもcはわbふb◜c⌂`mき`rメュせネきせネさせaほaほbはわcほbはわめわa웃ふa⌂め웃わcめbもbめb😐`kえdえ`kユbuメッせワ⧗ネおせえ⧗ネけせえa⌂め웃めわb⌂め웃めわbほa⌂め웃めわbほ⌂め웃め웃わね웃もわもbめbもbめal⌂liえcそaえbせbせcユせメavユヲ⬆️ノお⬆️ヘお웃め웃もわも웃め웃もわもa⌂め웃めわa웃め웃もわもa⌂め웃めわ웃めわやわめbわめ⌂c➡️せ⧗l⧗せ웃hえcそaえcそcルvユヲ⬆️ノお⬆️ヘお웃や♪や♪め웃もわも웃や♪め웃もわゆねめ⌂も⌂は웃`j웃お⌂お웃hえaセdえcそcルvユヲ⬆️ノお⬆️ヘおa웃わもをb웃わもをa웃や😐a웃わもをa웃や😐め웃ねわめ⬅️めねめねめわ`j⧗⌂も⌂⧗hえaせメcえbせbせbtjユヲ⬆️ノお⬆️ヘおbね⌂ねdの웃ねaめa웃わもをcの웃ねc웃わもを웃aね웃めのわbひ`lkめヲネliえdえ`luネcvnメワ⧗mネえ⧗qネえa웃ね⌂ね웃b⬅️ね웃ねめbひcね⌂ね웃c⧗웃ね웃ね웃b웃も웃ね😐b⌂`k⧗kもl`kき`mネメcupメoネsネ⌂ね⌂ね🅾️ね웃ねbね⬅️ねもaね⬅️ねb😐ね웃ねbねも😐`k⬆️`kナcえせcˇハおaメaを`kugu⬆️v⬆️u⌂めのめ♪ねめねめbね😐もaね⌂もb웃めわねめ웃めbは⬅️ね`j⧗オ⬆️iナcえせc⬆️ノかせbネもaめi⧗uf⧗v⬆️v⧗もひよひcね⬅️ねbの웃もねaやひ⧗bふ`j⧗ク⧗hナb⧗おせbセ⧗ネかせセわめたネdメヲせbu⧗ueu⬆️v⬆️uわめひめをめふ⬅️ひ웃bへaわめひ⧗웃a😐のi⧗エ○エ○オ⧗hナb⧗おせbセ⧗ネかせセわめためわcuモワb⧗u⧗ud⧗v⬆️v⧗aへbね웃は😐は웃ねcの⌂b⬆️웃は⌂a웃を⌂h⬆️○コa⧗fナa⧗ネかせaソ⧗おせソaネためわcuモワbu⧗u⧗ucu⬆️v⬆️uaのbのa웃の웃aね😐のaのcの⌂b⌂ね⌂ね⬅️ひh⧗ウj⧗エ⧗eナa⧗ネかせaソ⧗おせソめaもネeulメb⧗u⧗u⧗ub⧗v⬆️v⧗a⌂b⌂a⌂f웃d⌂c⌂ね⌂a⌂のd⬅️ねh⧗ウn⧗dナ⬆️ノかせタえせタbをaメ`ju⧗u⧗u⧗uau⬆️v⬆️u⬅️b⬅️a⌂`j⬅️b😐b웃h⬅️h⧗ウn⧗dナˇハおタえせタc○`l⧗u⧗u⧗u⧗u⧗v⬆️v⧗⬅️u☉uu웃u웃u웃u웃u웃u웃u웃uh~phソ⧗チ⧗`oフu⧗u⧗マ`q🅾️u웃u⬅️u☉kw웃v⌂u웃u웃u웃u웃h~lエ▒hセ▥そ`lヘ⧗u⧗uマaヨcヨc웃u웃u웃u웃u웃u웃u⌂u😐u♪u웃u웃w웃u웃u⬅️uh▒めわ✽エわエ○hあち`jフ⧗u⧗u⧗uフu⧗ユワモaリbu웃u웃u웃u웃u웃w➡️u웃u웃u웃u웃u웃u웃u웃u⬅️bせaせc█めわせわ⬇️カ█b🐱bセ▥つgホu⧗u⧗u⧗uヒ⧗uメワkヲkメaメワkヲkメb⬅️w웃u웃u웃u웃u⬅️u⬅️u⬅️u⌂v웃u웃uku웃u웃ucメd█もわめ✽エ█a░aソ⧗タ⧗セてeマ⧗u⧗u⧗u⧗u⧗ネ⧗u⧗モッメaモッメb웃v웃u웃u웃u웃u웃u웃u♪u웃u웃w⬅️u웃u웃y웃bせ○せc▒も🐱エ♥わ🐱∧セˇてdハ⧗ヒ⧗u⧗u⧗u⧗u⧗u⧗u⧗uモタメbモタメc⬅️u웃u웃u웃u웃u♪u⬅️u웃u웃w웃u웃u웃u웃uku웃ucエd~rわせわ▒あとbハ⧗ヒ⧗u⧗u⧗u⧗u⧗u⧗u⧗u⧗bたeたねcu웃u웃u웃u웃u웃u웃u웃u웃u웃u웃u웃u웃u웃u웃u웃u웃u웃u웃u웃u웃cエd~sわ🐱∧セˇなネ⧗ホu⧗u⧗u⧗u⧗u⧗u⧗u⧗ubねaねeねf`qワcワcワcワ`tウlb●b🐱bなdち`qヨcヨcaワcワcワcワcュbュbワcワ`kウna●a░aなdち`pリaリbaュbュbワkンkbワkンkbュiオ~lオ~pなdち`pメワkヲkメaメワkヲkメbaワkンkbワkンkbメッメbメッメbワkンkdそcエ~nエ~mエ█なdち`pモッメaモッメbaメッメbメッメcwewdメッメdそc🐱オ~lk█k~jす|dモタメbモタメcbweweはワcワはew`k🐱オ🐱オ⬇️k○l○k█エ░す~dたねcねたdbはeはワcワ`kワcワは`k~jオ🐱k○n○k●す○cね`jねcbワaワeワ`yワ`k~pr●す█`qaロほaそbそbたaせaせaたbそaたaたaたaたワ☉ほkaせdせbそaたaせcせeせaせaせaたaせaせワ웃ワ☉はワ웃kaせcせdせcせbそaたbせbたcせaせaせワ☉ほkたaたaたcせaたaたbせbたbせbたワ🅾️ン⬅️ン웃ン웃ャ♪ャ웃ャ☉🅾️k`☉ワ♪ャ⌂ン웃ン웃ュ⬅️ュ웃ュ☉♪k`☉ワ😐ョ웃ンkンkョ웃ョkョ☉😐k`☉ワ😐ョ웃ンkンkョ웃ョkョ☉😐k`☉ワ😐ッnンkンkンkンkンoンkンk☉⬅️k`☉ワ♪ッmンkンkンkンkンkヲlンkヲl☉⬅️k`☉ワ♪kッ⌂ンkンkンkヲlンkヲ⌂ンkワm☉⬅️k`☉ワ🅾️lン웃ンkンkンkヲlンk웃l웃ンkヲk☉😐k`☉ワ😐ョ웃ョkンk웃l웃ョ웃ンkン☉😐k`☉ワ😐ョkョkンk웃l웃ョ웃ンkン☉😐k`☉ワ♪ャl웃ャlンk♪ュkンkンk☉⬅️k`☉ワ♪kンm웃kンmンk♪kャkンkンk☉⬅️k`☉ワ🅾️o⬅️o⌂m🅾️p웃m웃m☉⬅️k`☉ワ◆m♪m⬅️m◆o웃m웃m☉⬅️k`☉ワ☉ほk`☉ワ☉ほk`☉ワ🅾️ヲ⬅️ヲ♪ン⬅️ャ⬅️ン⬅️ン◆ャ⬅️ャ♪ン♪ン☉jk`☉ワ♪ッ웃ッ⬅️ャ⌂ュ⌂ン⌂ャ🅾️ュ⌂ュ⬅️ャ⬅️ャ➡️k`☉ワ😐ロk웃ョ웃ョ웃ンkョ♪ョ웃ョ웃ョ웃ョ…k`☉ワ😐ロk웃ョ웃ョ웃ンkョ♪ョ웃ョ웃ョ웃ョ…k`☉ワ😐ンkンkンkンkンkンkンkンkンkンk😐ンkンkンkンkンkンkンkンk◆k`☉ワ😐ンkンkンkンkンkンkンkンkンkンk😐ンkンkンkンkンkンkンkンk◆k`☉ワ😐ンkンkンkンkンkンkンkンkンkンk😐ンkンkンkンkンkンkンkンk◆k`☉ワ😐ンkンkンkンkンkンkンkンkンkンk😐ンkンkンkンkンkンkンkンk◆k`☉ワ😐ンkンkンkンkンkンkンkンkンkンk😐ンkンkンkンkンkンkンk웃m◆k`☉ワ😐ンkンkンkンkンkンkヲlンkンkンk😐ンkヲlンkヲlンkンk웃ッm◆k`☉ワ😐ンkンkンkンkンkンkワmンkンkンk😐ンkワmンkワmンkンk웃kッ➡️k`☉ワ😐ンkンkンkンkンkンkヲk웃ンkンkンk😐ンkヲk웃ンkヲk웃ンkンk⌂lン…k`☉ワ😐ンkンkンkョkンkン웃ンkンkンk😐ンkン웃ンkン웃ンkンkンkン…k`☉ワ😐ンkンkンkョkンkン웃ンkンkンk😐ンkン웃ンkン웃ンkンkン웃ンk◆k`☉ワ😐ンkンkンkョkンkンkンkンkンk😐ンkンkンkンkンkンkンkンk◆k`☉ワ😐ンkンkンkョkンkンkンkンkンk😐ンkンkンkンkンkンkンkンk◆k`☉ワ😐ンkンkンkンkンkンkンkンkョk😐ンkンkンkンkョkョkン😐k`☉ワ😐ンkンkンkンkンkンkンkンkョk😐ンkンkンkンkョkョkン😐k`☉ワ😐ンkンkンkンkンkンkンkンk웃ャl😐ンkヲlンkンk웃ャl웃ャlンk⬅️k`☉ワ😐ンkンkンkンkンkンkンkンk웃kンm😐ンkワmンkンk웃kンm웃kンmンk⬅️k`☉ワ♪m웃m웃m웃m웃m웃m웃m웃m⌂o🅾️m웃l⌂m웃m⌂o⬅️o⌂m⬅️k`☉ワ웃ワ⬅️m웃m웃m웃m웃m웃m웃m웃m⬅️m◆m웃k⬅️m웃m⬅️m♪m⬅️m웃ワ웃k`☉ワ☉ほk`☉ajほ`웃"
+scratchpad="0paqarapaqbrapaqcra`bka`gka`c|a▥a`aiaたa`buc`pfpみi😐a`a😐a`…█a▒a🐱a█a▒b🐱a█a▒c🐱aja`a{a`dja`b{a`ajb|aいa`ayasataea∧c`pbpみh♪a😐a`a😐a`…へaほaまaへaほbまaへaほcまaza`azaldzala`aza`azb|aうa`aya⬇️a░afd`papみhえa😐c`…たc`ddc`p|aうa`aya⬇️a░a❎afc`pepみh`a😐c`…せc`ddd`bga`l|aうa`aya⬇️a░aha☉a웃a⌂a`pepみh`a😐c`❎de`awa`i⬆️a`b|aうa`aya⬇️a░a😐a`a⬅️a`qmpみh⬅️b`▤dg♥a`h…a➡️a⧗a`a|aうa`aya⬇️a░and`p}pみh⬅️b웃a⌂a`ˇdd`adaubveuc…a➡️a★a➡️a⧗a|aうa`aya⬇️a░a`anc`popみh⬅️c`ˇde`ada∧c✽a∧a✽a∧d`auc`bうa`aya⬇️a░a`a😐c`pみp`a○a`bna`あdf`ada∧cˇa∧aˇa∧d`a●a∧a●a`bうa`aya⬇️a░a`a😐c`pみp~ancca`▥di∧juavcua`aうa`ada⬇️a░a`a▤a▥aあa`php`anc`dnd`➡️dj∧b✽a∧a✽a∧a✽a∧e✽a∧b`aうa♪a🅾️a◆a░a`txp`and`bnc`★dk∧bˇa∧aˇa∧aˇa∧eˇa∧b`bえaおaかa░a`txp`anh`◝`◝`◝`◝`◝"
+os="_0000000021030310704115542165210022003230072400c062160321105200300003100032000300004200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000093331d00a15844343f10b7950d765088130981309715087151cb311e2151e218343611b00b1b0004c5024c5120d4000d4010d4024e61145a424890048801347c54483449a324ca32211124d0144e0144b012000002030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000248009e1119e012005178730087312440073488100c109a0019b001348143400034100342003450121300_"
+tbl_loc=split("1,125,128,159,289,115,406,89,497,137,636,147,785,141,928,115,1045,151,1198,91,1291,131,1424,111,1537,95,1634,169,1805,161,1968,111,2081,95,2178,143,289,115,928,115,2323,123,2448,159,2609,121,406,89,2732,119,636,147,785,141,2853,105,2960,193,3155,157,3314,121,3437,105,3544,9,3555,15,3572,17,3591,19,3612,49,3663,19,3684,23,3709,21,3732,45,3779,89,3870,67,3939,43")
+__label__
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc7c7cc77c777c7ccc77cccccc77cccccc77cccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc7c7c7c7c7c7c7ccc7c7cccccc7ccccccc7cccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc7c7c7c7c77cc7ccc7c7cccccc7cc777cc7cccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc777c7c7c7c7c7ccc7c7cccccc7ccccccc7cccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc777c77cc7c7c777c777ccccc777ccccc777ccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccc55cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccc57755cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccc5777775ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccc57676775ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccc5567777777c5ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccc57777777777575cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccc5777777777777775ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccc5777777777777775ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccc576c777c776775cccccccccccccccccccccccccccccccccccccccccccccccccccccccc55cccccc55cccccc55cccc
+ccccccccccccccccccccccccccccccccccccc577ccc7cc77775cccccccccccccccccccccccccccccccccccccccccccccccccccccc57755ccc57755ccc57755cc
+cccccccccccccccccccccccccccccccccccccc55777m777555cccccccccccccccccccccccccccccccccccccccccccccccccccccc5777775c5777775c5777775c
+cccccccccccccccccccccccccccccccccccccccc555c555cccccccccccccccccccccccccccccccccccccccccccccccccccccccc576767755767677557676775c
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc55677777776777777767777777c
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc5777777777777777777777777775
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc57777777777777777777777777777
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc57777777777777777777777777777
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc576c777c776c777c776c777c7767
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc577ccc7cc77ccc7cc77ccc7cc77
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc55777m7775777m7775777m7775
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc555c555c555c555c555c555c
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccmmmmmmm4ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccm9944994ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccm9499494ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccm9594594ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccm9995994ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccm9999994ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccm9995994ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccc44444444ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccmmmmmmm4ccccccccccccccccccccccccffffffffmmmmmmm4ffffffffmmmmmmm4ffffffffccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccm9944994cccccccccccccccccccccccc44404440m994499444404440m994499444404440ccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccm9499494cccccccccccccccccccccccc00000000m949949400000000m949949400000000ccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccm9594594cccccccccccccccccccccccc40444044m959459440444044m959459440444044ccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccm9995994cccccccccccccccccccccccc00000000m999599400000000m999599400000000ccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccm9999994cccccccccccccccccccccccc44404440m999999444404440m999999444404440ccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccm9995994cccccccccccccccccccccccc00000000m999599400000000m999599400000000ccccccccccccccccccccccccccccccccccccccccccccccccc
+ccccccc44444444cccccccccccccccccccccccc4044404444444444404440444444444440444044ccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc888pccccccccccccccccccccccccccccccccccccccc5555555555555555ccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc8888888ccccccccccccccccccccccccccccccccccccc5brbbbrbrrrrrrb5ccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc44949pcccccccccccccccccccccccccccccccccccccc5brbbbrbrrrrrrb5ccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccc49499p99ccccccccccccccccccccccccccccccccccccc5brbbbrbrrrrrrb5ccccccccc
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccc49994444ccccccccccccccccccccccccccccccccccccc5brbbbrbrrrrrrb5ccccccccc
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc4p99ppcccccccccccccccccccccccccccccccccccccc5brbbbrbrrrrrrb5ccccccccc
+ccccccccccccccccc5555ccccccccccccccccccccccccccccccccccccccc8448ccccccccccccccccccccccccccccccccccccccc5brbbbrbrrrrrrb5ccccccccc
+ccccccccccccccc55rrrr55cccccccccccccccccccccccccccccccccccc484484cccccccccccccccccccccccccccccccccccccc5000000000000005ccccccccc
+cccccccccccccc5rrrrr0rr5cccccccccccccccccccccccccccccccccc44844844cccccccc55cccccccccccccccccccccccccccc5brbbrbrrrrrb5cccccccccc
+ccccccccccccc5rrrrrr0rrr5ccccccccccccccccccccccccccccccccc44988944ccccccc5bb55cccccccccccccccccccccccccc5brbbrbrrrrrb5cccccccccc
+cccccccccccc5rrrrr0r0rrrr5cccccccccccccccccccccccccccccccc99888899cccccc5bbbbb5ccccccccccccccccccccccccc5brbbrbrrrrrb5cccccccccc
+ccccccccccc5rrrrrr0rrrrrrr5cccccccccccccccccccccccccccccccp988889pccccc5brbrbb5ccccccccccccccccccccccccc5brbbrbrrrrrb5cccccccccc
+5ccccccccc5rrrrrrrrrrrrrrrr5ccccccccccccccccccccccccccccccc888888cccc55rbbbbbbbc5ccccccccccccccccccccccc5brbbrbrrrrrb5cccccccccc
+b5ccccccc5rrrrrrrrrrrrrrrrrr5cccccccccccccccccccccccccccccc88cc88ccc5bbbbbbbbbb5b5cccccccccccccccccccccc5brbbrbrrrrrb5cccccccccc
+bb5ccccc5rrrrrrrrrrrrrrrrrrrr5ccccccccccccccccccccccccccccc44cc44cc5bbbbbbbbbbbbbb5ccccccccccccccccccccc5brbbrbrrrrrb5cccccccccc
+bb5cccc5rrrrrrrrrrrrrrrrrrrrrr5ccccccccccccccccccccccccccc444cc444c5bbbbbbbbbbbbbb5ccccccccccccccccccccc5brbbrbrrrrrb5cccccccccc
+vvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0m
+4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v
+4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v
+4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v
+4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v
+040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404
+v40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440v
+00400044004000440040004400400044004000440040004400400044004000440040004400400044004000440040004400400044004000440040004400400044
+vvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0mvvv4vv0m
+4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v
+4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v4440440v
+4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v4440vv4v
+4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v4440v40v
+040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404040v4404
+v40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440vv40v440v
+00400044004000440040004400400044004000440040004400400044004000440040004400400044004000440040004400400044004000440040004400400044
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+
+__gff__
+0000010101010101000000000000010102020201010000010000000001010000020202010100000101010100010101010000000000000001010101000001010100000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+__map__
+1c080481013a08590507d0300117c417d013d00a0c1a0607d041031968800228692a0c1a07576a7a0d476a760f579187c217d023c7020f220f459253c237c003d00a0d67c017c057d00a0c33d007d037d03a0d37c033c23a0d43c30a0d17c103d1537a672e837a47831591272e896857c327d04a0d5968237f0100102f463020
+0c48109497d017d35a0c1a80090c298128822783278328822e540a0c288229816d600f5616e013e30d570e543e540f560a0d16e01d606f312d0d0e6d46e30d110f591a0c3f250a0c2a0c2d0f1f240f5616e01e543f31120c0e543d0f0f57160d73e50d655c009a0e577166724a0c287055912cc12591937a360d17831596009a
+2a105e593a0c109b1e54359624105cc9663820392c4e87714771477110923c4b3c0b310630310265019ec300026f972f2812e21901220c2ec219e02ea0050120e114012e4e410d29014fb704e157104fb808d01f3f02e3183f4fb85f92420c2ca1430c53e1161072e1171032e11dcf6da3640c3fb60ae2130c2f9343e12f937b
+3124102a0c5789258b238d3b31702f353220304b31400d170ccb0544d8b83cc90d13734639b93cc214d0084529b93f832d230445c4452f832d2374457f7c04452d1a3ccb4745414647454ccb014647455d12970f130f270f130f270f130f3cc37cc40d1058477410170f46482d19ba0c1c05330030b80947c217c02101237b18
+0a350c300113c0070f13c211021a0d3734480b6a0d10011672210253d407d017d3160c2a0d3a0c6a0e27c013c013c2467257d323c423c00a0e27d273c30593b672160c25929870180c5a0c167233c0186903c245738a0c1592c80c1591288277c01a0d23c467d00a0d23c0477197c11a0c03452ac0218fa02f46309cc8a92ae1
+4f56490c53e266ab3ae26f5505a8470c47aa580c964d259418e2464c580c2cc10c19150c290c1f0211a8060c68a9610c140c210c49e2080c1f5503aa390c74e22e55220c37aa880c174c2c180b981e07090c19e01ae2260c19e0374d580c29a828a9140c6f481f01059627e20ae23f01110c1f48390c5f040f5811a8260c5f03
+0f57320c2eaa1da9050c1ca81c53044e3c0b3b063031025fbb15011379388827ff060c3002a901388417fe350113e324018901188417ff73e014e013e014e013e04884588417f933e012e123e04884588417f9a88423e2278516f423d0378533e24fbba7f2588417fe53e5a8843a8219f726e36a82488417f7888437f124e527
+f147f1488417f88fbe060c18a009a10aa2ab434b31137ffb31202f35322030400ccb0d170544010009be009f050c2f554d56154501d019be3f55350c20910cc12d233f5f6b4567451d233f5f23450b4567455d231b452f5747457cc32d180445109918971a1032104cc608451d1196e20ae219455cc019b82cc129b82cc40d12
+7cc10d114cc1284703c57410170c46482d19ba0c5005330030b80957d0210116d0280a16d03a0c17c21001190c210227715a0c180b06727592000131025a0e477147c05a0c1870637a46f708be530f150e278318b8273423c013c13a0d7a0c267287ca03c923d0060c3a0c13d09ac0289316c203c223c0537c440d26917a0c17
+c203c213d007d0120c0a0e37c203c213d007d08a0c27c4090c17c02a0c160c45363692637f540c320c902f46305006300102b80971010a0c380a4a0e200131024a0e480b6a0d10014a8067e2588204d06a0c7a0d298127c003c01a0c19811591c70cea0c8a0e9691398104c026915a0c7a0eba0dba0e64e317716a0c4a0e9a0e
+437f0100102f42900630300b3106303102650190020cdb3da1440c29012fb604101ae1271035011ec614e0140144e21f933dd51d7d21d037e2040c280c1d4b10e10a3f44105fbf0d9214e03d9214e03d920a0c14e03e3e11e0083e33e03dcf43e0061023e0471021101f9259102f4b12e12dd01d7a08e014e0530c2fb63ce257
+0d871084104b31702f353220304b31400d170ccb054401000891060c2ccb1945289139452891060c394528913cc01d1577d217d02d0c19b87d0e0eaa134509459d0e0eaa13450945fd0e0eaa1345094514e279b8090c2d110cc569b9190c2cc239b9190c2cc239b9190c2cc40d177cc99d0c1847414b4410070c46482d19ba0c
+1c0533003081013a085905110c200127712a0627d003d02103559140025a0707e016e127e04804010007d003d027d003d0c593c7d3230fb88224e3b67234e3d67234e3b7d723d307d0199107c1e870b692669198821791710cb37fc7c0502f4630200c481094a791479137922d232f705f540ae21f542f836d227e00160e2f79
+43d107d147d217d0269500992610460f13c0050f13c1060f170f677147c017c00a0c137527c017c02a0c177136c01a0c1771ba0d39811882179126722791288810961595191057c303c213c030940595191079686a0c1771467226918379270c1094069414104d230c601f541f5d06e96a0d537a6a0c137535912cc526382039
+2c5301000c49777150923c4c6c0b3106303102650166901fac20020bb01f0412e2133c2f5a16e427b42901050d4e02123c25011eae010c240109e21f040ab1233c0a3d190c10d01f5617b4190125e03e5616b5341021e0181043103fac2d5604e20bb00a0c15b60b3d2d0200e2113c1f5616e007b41f04233c220c23104f5617
+b4681055e03daa19b2251022e01caa18b37f5806e427b42c5614b73fae3bb06cac28b354104b31602f353220305b31400d110cc6054479b82cc129b82cc25c7d7c782c782c782c782c782c7a3c5927714c839c547c810f54ac7c7d1a0cc29ca929b81e551cc01cab09ba2d541e601c601c550cb34c575c560d6c5c5f2cb33c54
+7ca83c5f3cb3dc563f301d0d20945cc36cc12847290c3a0c470c36482d19ba0c5c06300102b8091a0c61010a0e380a60011a0e21026a0d280b6771100146912771a70c5a0eaa0e990c478317a203c213c01893ca0e7941369128825a0e5a0c5a0eca0d478317c017c1369247a004703941487079416a0c637b060c738ba02f46
+305c06300102b809137a47a115411101380a02e21a0c3ac01592100123c407c506e2110243c0480b270c437a1001170c27347771737a180c260c16912684158b97d4360c370f13c013c102e136c20ae13793e70f1941887037c703c6260f320f23c0279128822a0ea9c019c0279637c263c40a0d420c680c390c27c0279223c3
+02e119682791837f2590130c2590c02f4630100533003081013a08590507d1110c200119913a063aa4110329a32b9518a237a1100203c013c0279127c10a0727c05804959157e2737a4783179225e1827836841585148614c2060f28c21992977136e2870f030f937b5b9606c13ac406d016d05790737c65c10a9527c017c009
+c2c992410f137b5791238da02f6630100630810127c21a085905300106724a0603c213c0070f2a0c11031672437006a03870100218704a07280c3672280437c017c02a0c257367a00470587003c4020c796833c3377113c0170f287034746a0c1771876a387057c317a00371487003c043c8120c38958870487036c123c013c0
+0990299017c213c1437936901771373447c203c23a0c47a003713a0c46725870277126726771a37f2672510ca02f4630700b3106303102510c15019fb600023f923fb6490100e10b103f9345012fb614010ac05fb602e60710390125101dcf61d0071059105f9483e1041064106d4a0cdc00e25e9e3fb64fb736e33fb64f946f
+b83ac047103fb6441013e14f4a0fb73f935510461015e13510441021e12f4a4b31010c702f353220304b315c05330030b80971011941280a590c100103c018410a4003c121026941280b17d3580c100118422102490c48410a4067c42541078017c0190c29415791377163c607c6260c220c7771030fb94157715a0c18707941
+687067c403c4160c220c488258410a4036c120c00ac0179014c1037c937f720ca02f4630400d170ccb0544010009be1610480c271019b93cc41d0f65494d7601000cb21c5dac541ca84c8301000c79244a5cc26c5519b92c56154519b92c574c7d8c561caa4c5a1cae8c561caa4d6c0c5f09494ccb01000cc26cc25cc7acc14c
+c14cc56847350c570c46482d19ba0c1c05330030b80971010a0c380a4a0e200131021a0e4672380b4a0c30010890289011022890389038904a0c46e09a0e36724a0c060f277176e0567246e066724a0c12e168706a0c4a0e5a0ea7719a0e478313c743c0070f380c278368902790170c27902790379056c726c0b89028902890
+3a0c6981b89526e14a0ea890177128912672289125736a0c6a0e7a0e7a0d337c86e12a0c579216e0479216e079813a0c1981779426e1489316e1ba0c8a0e4771b870437c0590259025902590138da02f46301c01020630b809210c2790237f1101060c380a0590320c300127d311026790280b53cf13c00ac010010890579027
+904790180c23cf4790370c370c63c027c1189168901941770c18410a40280c47c017c059413a0c27c15a4037c01780064017c01a0c2a0c2842687078902a0c287028902890299586727870780c290c27901941050c1892637b270c250c3a0c28410a40837b3690130c1691238da02f46301c01020630b80971010941380a3d97
+30013102270c28423d99180b70012d93667277c703c7160c420c13c03791272e47914d9579412d95680c18822d99c78967c703c713c0060c420c4791267227913a0c1d9bc40c4d9bc40c4d9147714d9b540c740c4d9327c059812a92198028970780258023a0a02f65322030400cc5054469bbd872020008725a0e6cc349bf3a
+106ccb1c575575956e2cc30100787277736a0d4872670c280c277329b9670f23710f55380c270c020068723ccb020c657584762cc569ba4ccb4575cccbf20c487278727a0c49bb280c3cc50d116847870c46482d19ba0c1c063031026501193827681c38701002137fb804602f210126306905200c4810923cc607e605e613e4
+60982938203a200c4810912d210f5d16e70ae78f541c4a0938203a200c48109e2d600f0d1f5406e01e540f0005e01d5402e304e01f0d01e12d5404e01e540f0005e01f540f0d06e01d601938203a200c4810912cb40f5b06e70ae97cb439380f54203a200c4810923d5a0c5413e404e45d180c56109429381d54103a8c48900b
+0fb4ef170c010002e243ef010012e29b9f7ae28048900b0fb4ef170c0100065024ef01001550065023e6855006506450145033e9045024502450245024502b9f29e26c0b3b190151021b0f1b3145013f5606e217b23f0202e213b61daa000219b02b311f020dac02e213b6093d19b02d5604e215b419012e0401e41cae12b708
+3d28b1150107e12b311401237f82a727713b31177132a11771408d08889cbc5818a932a8280c37aa289305e907104cc70c192893030c14103c19280c4e0503aa0791190c1ae1279113aa190c29a8260c2f5706e3310c1c5703e35ea91da81c50044eac0c49396a3c220cca5f060f5a7c0b250f890c380f3c0b5cc20d1a140fac
+0b180c240c360f850f2c001c53044e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
